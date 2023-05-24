@@ -57,14 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch(url)
           .then(response => response.blob())
           .then(async blob => {
-            let newUU = URL.createObjectURL(blob);
-            blob.type = "audio/wav"
-
+            
             const deepgramUrl = "https://api.deepgram.com/v1/listen";
-            const payloadToSend = {
-              url: "https://dpgr.am/spacewalk.wav"
-              // url: newUU
-            };
 
             const headers = {
               "Accept": "application/json",
@@ -76,16 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             blobToBase64(blob).then(async res => {
               // do what you wanna do
-
               let responseUrl = await uploadToCloudinary(res)
               if (!responseUrl) {
                 console.log("Error uploading to cloudinary")
                 return
               }
-
-              const formData = new FormData();
-              formData.append("url", responseUrl); // Adjust the filename as needed
-
+              const payloadToSend = {
+                url: responseUrl
+              };
               const options = {
                 method: "POST",
                 // body: formData,
