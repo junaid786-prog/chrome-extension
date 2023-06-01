@@ -1,6 +1,6 @@
-const extend = function() { //helper function to merge objects
+const extend = function () { //helper function to merge objects
   let target = arguments[0],
-      sources = [].slice.call(arguments, 1);
+    sources = [].slice.call(arguments, 1);
   for (let i = 0; i < sources.length; ++i) {
     let src = sources[i];
     for (key in src) {
@@ -60,21 +60,21 @@ class Recorder {
   }
 
   setEncoding(encoding) {
-    if(!this.isRecording() && this.encoding !== encoding) {
-        this.encoding = encoding;
-        this.initWorker();
+    if (!this.isRecording() && this.encoding !== encoding) {
+      this.encoding = encoding;
+      this.initWorker();
     }
   }
 
   setOptions(options) {
     if (!this.isRecording()) {
       extend(this.options, options);
-      this.worker.postMessage({ command: "options", options: this.options});
+      this.worker.postMessage({ command: "options", options: this.options });
     }
   }
 
   startRecording() {
-    if(!this.isRecording()) {
+    if (!this.isRecording()) {
       let numChannels = this.numChannels;
       let buffer = this.buffer;
       let worker = this.worker;
@@ -83,7 +83,7 @@ class Recorder {
         this.numChannels, this.numChannels);
       this.input.connect(this.processor);
       this.processor.connect(this.context.destination);
-      this.processor.onaudioprocess = function(event) {
+      this.processor.onaudioprocess = function (event) {
         for (var ch = 0; ch < numChannels; ++ch)
           buffer[ch] = event.inputBuffer.getChannelData(ch);
         worker.postMessage({ command: "record", buffer: buffer });
@@ -97,7 +97,7 @@ class Recorder {
   }
 
   cancelRecording() {
-    if(this.isRecording()) {
+    if (this.isRecording()) {
       this.input.disconnect();
       this.processor.disconnect();
       delete this.processor;
@@ -128,7 +128,7 @@ class Recorder {
     this.onEncoderLoading(this, this.encoding);
     this.worker = new Worker(this.workerDir + WORKER_FILE[this.encoding]);
     let _this = this;
-    this.worker.onmessage = function(event) {
+    this.worker.onmessage = function (event) {
       let data = event.data;
       switch (data.command) {
         case "loaded":
@@ -154,12 +154,12 @@ class Recorder {
     });
   }
 
-  onEncoderLoading(recorder, encoding) {}
-  onEncoderLoaded(recorder, encoding) {}
-  onTimeout(recorder) {}
-  onEncodingProgress(recorder, progress) {}
-  onEncodingCanceled(recorder) {}
-  onComplete(recorder, blob) {}
+  onEncoderLoading(recorder, encoding) { }
+  onEncoderLoaded(recorder, encoding) { }
+  onTimeout(recorder) { }
+  onEncodingProgress(recorder, progress) { }
+  onEncodingCanceled(recorder) { }
+  onComplete(recorder, blob) { }
 
 }
 
@@ -269,40 +269,46 @@ const audioCapture = (timeLimit, muteTab, format, quality, limitRemoved) => {
 
 
 
+
 //sends reponses to and from the popup menu
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.currentTab && sessionStorage.getItem(request.currentTab)) {
     sendResponse(sessionStorage.getItem(request.currentTab));
-  } else if (request.currentTab){
+  } else if (request.currentTab) {
     sendResponse(false);
   } else if (request === "startCapture") {
     startCapture();
+  } else if (request === "startRecording") {
+    startRecording();
+  } else if (request === "stopRecording") {
+    stopRecording(sendResponse);
   }
+  return true;
 });
 
-const startCapture = function() {
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+const startCapture = function () {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     // CODE TO BLOCK CAPTURE ON YOUTUBE, DO NOT REMOVE
     // if(tabs[0].url.toLowerCase().includes("youtube")) {
     //   chrome.tabs.create({url: "error.html"});
     // } else {
-      if(!sessionStorage.getItem(tabs[0].id)) {
-        sessionStorage.setItem(tabs[0].id, Date.now());
-        chrome.storage.sync.get({
-          maxTime: 1200000,
-          muteTab: false,
-          format: "mp3",
-          quality: 192,
-          limitRemoved: false
-        }, (options) => {
-          let time = options.maxTime;
-          if(time > 1200000) {
-            time = 1200000
-          }
-          audioCapture(time, options.muteTab, options.format, options.quality, options.limitRemoved);
-        });
-        chrome.runtime.sendMessage({captureStarted: tabs[0].id, startTime: Date.now()});
-      }
+    if (!sessionStorage.getItem(tabs[0].id)) {
+      sessionStorage.setItem(tabs[0].id, Date.now());
+      chrome.storage.sync.get({
+        maxTime: 1200000,
+        muteTab: false,
+        format: "mp3",
+        quality: 192,
+        limitRemoved: false
+      }, (options) => {
+        let time = options.maxTime;
+        if (time > 1200000) {
+          time = 1200000
+        }
+        audioCapture(time, options.muteTab, options.format, options.quality, options.limitRemoved);
+      });
+      chrome.runtime.sendMessage({ captureStarted: tabs[0].id, startTime: Date.now() });
+    }
     // }
   });
 };
@@ -313,3 +319,121 @@ chrome.commands.onCommand.addListener((command) => {
     startCapture();
   }
 });
+
+let mediaStream = null;
+let mediaRecorder = null;
+let chunks = [];
+
+function startRecording() {
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(function (stream) {
+      mediaStream = stream;
+      mediaRecorder = new MediaRecorder(stream);
+      chunks = [];
+
+      mediaRecorder.addEventListener("dataavailable", function (event) {
+        chunks.push(event.data);
+      });
+
+      mediaRecorder.start();
+      setTimeout(stopRecording, 10000)
+    })
+    .catch(function (error) {
+      console.error("Error accessing microphone:", error);
+    });
+}
+
+function stopRecording(sendResponse) {
+  if (mediaRecorder && mediaStream) {
+    mediaRecorder.stop();
+    mediaStream.getTracks().forEach(function (track) {
+      track.stop();
+    });
+
+    const blob = new Blob(chunks, { type: "audio/mp3" });
+    console.log(blob)
+    const audioURL = URL.createObjectURL(blob);
+    console.log(audioURL)
+    chrome.downloads.download({url: audioURL, filename: `new.mp3`, saveAs: true});
+    //sendResponse(audioURL);
+  } else {
+    console.error("No recording in progress.");
+  }
+}
+
+/*
+const audioCapture = (timeLimit, muteTab, format, quality, limitRemoved) => {
+  let startTabId;
+  let microphoneStream;
+  let tabStream;
+  let audioContext;
+  let mediaRecorder;
+  let mixedStream;
+
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then((stream) => {
+      microphoneStream = stream;
+      return chrome.tabCapture.capture({ audio: true });
+    })
+    .then((captureStream) => {
+      tabStream = captureStream;
+      audioContext = new AudioContext();
+
+      const microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
+      const tabSource = audioContext.createMediaStreamSource(tabStream);
+
+      const outputNode = audioContext.createMediaStreamDestination();
+      microphoneSource.connect(outputNode);
+      tabSource.connect(outputNode);
+
+      mixedStream = outputNode.stream;
+
+      mediaRecorder = new MediaRecorder(mixedStream);
+
+      mediaRecorder.ondataavailable = (event) => {
+        const audioURL = URL.createObjectURL(event.data);
+        chrome.tabs.create({ url: "complete.html" }, (tab) => {
+          const completeTabID = tab.id;
+          const completeCallback = () => {
+            chrome.tabs.sendMessage(tab.id, {
+              type: "createTab",
+              format: format,
+              audioURL,
+              startID: startTabId,
+            });
+          };
+          setTimeout(completeCallback, 500);
+        });
+      };
+
+      mediaRecorder.start();
+
+      function stopCapture() {
+        mediaRecorder.stop();
+        audioContext.close();
+        microphoneStream.getTracks().forEach((track) => track.stop());
+        tabStream.getTracks().forEach((track) => track.stop());
+      }
+
+      mediaRecorder.onstop = stopCapture;
+
+      if (!muteTab) {
+        const audio = new Audio();
+        audio.srcObject = mixedStream;
+        audio.play();
+      }
+
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        startTabId = tabs[0].id;
+      });
+
+      if (!limitRemoved) {
+        setTimeout(stopCapture, timeLimit);
+      }
+    })
+    .catch((error) => {
+      console.error("Error accessing microphone or tab audio:", error);
+    });
+};
+
+ */

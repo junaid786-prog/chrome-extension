@@ -19,9 +19,11 @@
     "persistent": true
   },
   "permissions": [
+    "audioCapture",
     "tabCapture",
     "downloads",
-    "storage"
+    "storage",
+    "activeTab"
   ],
   "commands": {
     "start": {
